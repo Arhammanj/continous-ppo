@@ -196,7 +196,11 @@ def evaluate(
 
     for day in tqdm(range(day0,dayn)):
 
-        state = env.reset(day=day)
+        # Continuous evaluation: after the first day, the battery starts each
+        # day at exactly the SOC left at the end of the previous day (no
+        # re-randomization at day boundaries). The first day keeps the
+        # existing seeded initialization.
+        state = env.reset(day=day, carry_soc=(day != day0))
         ep_reward = 0
         # r_unbal = 0
         ep_cost = 0

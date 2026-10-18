@@ -164,9 +164,7 @@ cython_debug/
 
 datasets/*
 results/*
-<<<<<<< HEAD
 MILP_problem.py
-=======
 mlflow.db
 optuna.db
 artifacts/*
@@ -175,4 +173,3 @@ saved_agents/
 tensorboard_logs/
 data_supervised_ml/
 mlflow_runs/
->>>>>>> 1e9ea8473763bf93f4b09260416b428542f68d9c

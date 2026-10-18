@@ -1,0 +1,1 @@
+{"learning_rate": 0.0003, "discount_factor": 0.99, "gae_lambda": 0.95, "clip_range": 0.2, "n_epochs": 10, "batch_size": 64, "rollout_steps": 2048, "nn_hidden_layers": [256, 256], "max_grad_norm": 0.5, "normalize_state": true, "ent_coef": 0.0, "vf_coef": 0.5, "init_log_std": 0.0}

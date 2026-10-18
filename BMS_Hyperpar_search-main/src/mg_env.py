@@ -199,6 +199,7 @@ class Battery():
         self.efficiency=efficiency
         self.safe_soc_low=safe_soc_low    # hard safety band: SOC can never leave [safe_low, safe_high]
         self.safe_soc_high=safe_soc_high
+        self.current_capacity=None        # set on first reset()
     def step(self,action_battery):
         energy=action_battery
         # Safety shield: clip the action so the resulting SOC stays inside the hard
@@ -218,8 +219,14 @@ class Battery():
     @property
     def SOC(self):
         return self.current_capacity
-    def reset(self):
-        self.current_capacity=np.random.uniform(self.safe_soc_low,self.safe_soc_high)
+    def reset(self, soc=None):
+        # soc=None -> existing behaviour: random initial SOC inside the safe
+        # band. soc given -> start from exactly that SOC (e.g. continuous
+        # multi-day evaluation carrying the previous day's ending SOC over).
+        if soc is None:
+            self.current_capacity=np.random.uniform(self.safe_soc_low,self.safe_soc_high)
+        else:
+            self.current_capacity=float(np.clip(soc,self.safe_soc_low,self.safe_soc_high))
         # print(f'Battery initial soc: {self.current_capacity}')
         return self.current_capacity
 
@@ -311,6 +318,9 @@ class MicroGridEnv(gym.Env):
         self.boundary_soc_low = kwargs.get("boundary_soc_low", DEFAULT_BOUNDARY_SOC_LOW)
         self.boundary_soc_high = kwargs.get("boundary_soc_high", DEFAULT_BOUNDARY_SOC_HIGH)
         self.soc_deadband = kwargs.get("soc_deadband", DEFAULT_SOC_DEADBAND)
+        # Optional fixed initial SOC. None -> existing random initialization
+        # inside the safe band on the first reset of an evaluation window.
+        self.initial_soc = kwargs.get("initial_soc", None)
         self.alpha_soc_stability = kwargs.get("alpha_soc_stability", DEFAULT_ALPHA_SOC_STABILITY)
         self.beta_boundary_safety = kwargs.get("beta_boundary_safety", DEFAULT_BETA_BOUNDARY_SAFETY)
         self.gamma_action_smoothness = kwargs.get("gamma_action_smoothness", DEFAULT_GAMMA_ACTION_SMOOTHNESS)
@@ -720,7 +730,8 @@ class MicroGridEnv(gym.Env):
     def step(self, action):
         """
         Arguments:
-            action: A list.
+            action: A discrete action index (int, DQN) or a raw battery
+                setpoint in kW (float / array-like, continuous agents such as PPO).
 
         Returns:
             state: Current state
@@ -728,8 +739,14 @@ class MicroGridEnv(gym.Env):
             terminal: Boolean on if the game ended (maximum number of iterations)
             info: None (not used here)
         """
-        if type(action) is not list:
-            action = ACTIONS[action]
+        if isinstance(action, (int, np.integer)):
+            # Discrete API: map the action index to its kW setpoint
+            action = ACTIONS[int(action)]
+        elif isinstance(action, (list, tuple, np.ndarray)):
+            # Continuous API: raw battery setpoint in kW
+            action = float(np.asarray(action, dtype=np.float64).reshape(-1)[0])
+        else:
+            action = float(action)
 
         # print(f'Actions{self.time_step}: {action}')
         #print(f'Time_step in step: {self.time_step}')
@@ -930,10 +947,17 @@ class MicroGridEnv(gym.Env):
         info = self._build_info()
         return state, reward , terminal, info
 
-    def reset(self,day=None):
+    def reset(self,day=None,carry_soc=False,initial_soc=None):
         """
         Create new TCLs, and return initial state.
         Note: Overrides previous TCLs
+
+        carry_soc: continuous multi-day evaluation flag. When True the battery
+            starts the new day at exactly the SOC it had at the end of the
+            previous episode -- no randomization at the day boundary. Only the
+            first reset of an uninitialized battery falls back to the
+            configured initial SOC (initial_soc kwarg / env.initial_soc) or
+            the existing random initialization.
         """
         if day == None:
             self.day= random.randint(self.day0,self.dayn-1)
@@ -945,8 +969,14 @@ class MicroGridEnv(gym.Env):
         self.unbalance = 0
         self.prev_battery_action = 0.0
 
-        # Reset the battery to a random state
-        self.in_SOC = self.battery.reset()
+        if carry_soc and self.battery.current_capacity is not None:
+            # Continue exactly where the previous day ended.
+            self.in_SOC = self.battery.reset(self.battery.current_capacity)
+        else:
+            # First day (or normal reset): configured initial SOC if given,
+            # otherwise the existing random initialization.
+            start_soc = initial_soc if initial_soc is not None else self.initial_soc
+            self.in_SOC = self.battery.reset(start_soc)
         self.prev_soc = float(self.in_SOC)
         
         # Reset DG to 0
@@ -954,7 +984,7 @@ class MicroGridEnv(gym.Env):
 
         return self._build_state()
 
-    def reset_all(self,day=None):
+    def reset_all(self,day=None,carry_soc=False):
         """
         Create new TCLs, and return initial state.
         Note: Overrides previous TCLs
@@ -967,7 +997,10 @@ class MicroGridEnv(gym.Env):
         # print("Day:", self.day)
         self.time_step = 0
         self.prev_battery_action = 0.0
-        in_SOC = self.battery.reset()
+        if carry_soc and self.battery.current_capacity is not None:
+            in_SOC = self.battery.reset(self.battery.current_capacity)
+        else:
+            in_SOC = self.battery.reset(self.initial_soc)
         self.prev_soc = float(in_SOC)
         self.high_price = 0
         self.loads.clear()

@@ -31,9 +31,11 @@ DAYN = 365
 def evaluate_days(env, agent, day0=DAY0, dayn=DAYN):
     rows = []
     n = len(env.grid.buy_prices)
+    # Deterministic initial SOC for the FIRST day only; every following day
+    # continues from the previous day's ending SOC (no re-randomization).
+    np.random.seed(0)
     for day in range(day0, dayn):
-        np.random.seed(0)          # deterministic battery initial SOC
-        state = env.reset(day=day)
+        state = env.reset(day=day, carry_soc=(day != day0))
         for h in range(24):
             idx = (day * 24 + h) % n
             buy_price = float(env.grid.buy_prices[idx])

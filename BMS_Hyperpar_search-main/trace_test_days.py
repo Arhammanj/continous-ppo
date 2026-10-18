@@ -18,33 +18,42 @@ CKPT = Path('results') / 'best_checkpoint'
 TEST_DAYS = [301, 302, 303, 304, 305, 306, 307]
 
 
-def trace_day(env, agent, day: int):
+def trace_days(env, agent, days):
+    """Greedy trace of consecutive days: the first day uses the seeded
+    initial SOC and every following day starts at exactly the SOC left at
+    the end of the previous day (no re-randomization at day boundaries)."""
     n = len(env.grid.buy_prices)
-    hours, sell, ch_dch, profits, soc = [], [], [], [], []
-    np.random.seed(0)
-    state = env.reset(day=day)
-    for h in range(24):
-        idx = (day * 24 + h) % n
-        hours.append(h)
-        sell.append(float(env.grid.sell_prices[idx]))
-        action = agent.act(state, epsilon=0.0)
-        state, reward, done, _ = env.step(action)
-        ch_dch.append(float(env.battery.energy_change))
-        profits.append(float(env.last_profit))
-        soc.append(float(env.battery.SOC))
-        if done:
-            break
-    return (np.array(hours), np.array(sell), np.array(ch_dch),
-            np.array(profits), np.array(soc))
+    np.random.seed(0)  # deterministic initial SOC for the FIRST day only
+    results = []
+    for day in days:
+        hours, sell, ch_dch, profits, soc = [], [], [], [], []
+        state = env.reset(day=day, carry_soc=(day != days[0]))
+        for h in range(24):
+            idx = (day * 24 + h) % n
+            hours.append(h)
+            sell.append(float(env.grid.sell_prices[idx]))
+            action = agent.act(state, epsilon=0.0)
+            state, reward, done, _ = env.step(action)
+            ch_dch.append(float(env.battery.energy_change))
+            profits.append(float(env.last_profit))
+            soc.append(float(env.battery.SOC))
+            if done:
+                break
+        results.append((day, np.array(hours), np.array(sell), np.array(ch_dch),
+                        np.array(profits), np.array(soc)))
+    return results
 
 
 env = MicroGridEnv(reward_mode='pure_profit')
 agent = QAgent.load_from_disk(env, CKPT)
 
+# Trace all held-out days in one continuous run (SOC carries across days),
+# then reuse the same results for the figure and the summary so they match.
+traces = trace_days(env, agent, TEST_DAYS)
+
 fig, axs = plt.subplots(len(TEST_DAYS), 1, figsize=(11, 2.6 * len(TEST_DAYS)),
                         sharex=True)
-for ax, day in zip(axs, TEST_DAYS):
-    hours, sell, ch_dch, profits, soc = trace_day(env, agent, day)
+for ax, (day, hours, sell, ch_dch, profits, soc) in zip(axs, traces):
 
     charge = np.clip(ch_dch, 0, None)
     discharge = np.clip(ch_dch, None, 0)
@@ -82,10 +91,9 @@ fig.savefig(str(out_path), dpi=200)
 print(f'Plot saved to {out_path}')
 
 print('\n--- Summary (test days) ---')
-for day in TEST_DAYS:
-    hours, sell, ch_dch, profits, soc = trace_day(env, agent, day)
+for day, hours, sell, ch_dch, profits, soc in traces:
     peak = int(np.argmax(sell))
     ch_h = [int(h) for h in hours[ch_dch > 0]]
     ds_h = [int(h) for h in hours[ch_dch < 0]]
     print(f'day {day}: profit {profits.sum():+8.2f} | peak sell {peak}h | '
-          f'charge@{ch_h} | discharge@{ds_h}')
+          f'charge@{ch_h} | discharge@{ds_h} | SOC end {soc[-1]:.2f}')
