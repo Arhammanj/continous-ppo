@@ -1,0 +1,27 @@
+# PPO experiment configuration (Stable-Baselines3, pure-profit objective).
+# Entry point: ppo/train.py, ppo/evaluate.py
+
+env:
+  day0: 0            # first training day
+  dayn: 300          # exclusive upper bound -> training days [0, 299]
+  reward_mode: pure_profit   # explicit; single supported training objective
+
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  n_steps: 48        # = 2 episodes of 24 steps; must be >= batch_size
+  batch_size: 16    # n_steps * n_envs (48) is divisible by batch_size (16)
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  ent_coef: 0.0
+  seed: 0
+  total_timesteps: 200000
+
+paths:
+  model_dir: models/ppo
+  result_dir: results/ppo
+
+eval:
+  day0: 300          # held-out evaluation days [300, 364]
+  dayn: 365

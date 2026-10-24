@@ -1,0 +1,22 @@
+{
+  "parameters": {
+    "policy": "MlpPolicy",
+    "learning_rate": 0.0003,
+    "n_steps": 4096,
+    "batch_size": 64,
+    "n_epochs": 10,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "ent_coef": 0.0,
+    "seed": 0,
+    "total_timesteps": 48000
+  },
+  "environment": {
+    "day0": 0,
+    "dayn": 300,
+    "reward_mode": "pure_profit"
+  },
+  "runtime_seconds": 802.6232454776764,
+  "actual_environment_steps": 49152,
+  "ppo_updates": 12
+}

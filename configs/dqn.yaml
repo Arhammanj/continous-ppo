@@ -1,0 +1,39 @@
+# DQN experiment configuration (Double DQN, pure-profit objective).
+# Entry point: dqn/train.py, dqn/evaluate.py
+
+env:
+  day0: 0            # first training day
+  dayn: 300          # exclusive upper bound -> training days [0, 299]
+  reward_mode: pure_profit   # explicit; single supported training objective
+
+train:
+  n_episodes: 5000
+  eval_freq: 100     # greedy evaluation every N episodes
+  seed: 0
+
+# Hyper-parameters mirror the reference DQN experiment (runner_train.py) so the
+# baseline behaviour is preserved exactly.
+agent:
+  learning_rate: 0.0001
+  discount_factor: 0.99
+  batch_size: 64
+  memory_size: 10000
+  freq_steps_update_target: 200
+  n_steps_warm_up_memory: 500
+  freq_steps_train: 16
+  n_gradient_steps: 2
+  nn_hidden_layers: [256, 256]
+  max_grad_norm: 10
+  normalize_state: true
+  use_double_dqn: true
+  epsilon_start: 1.0
+  epsilon_end: 0.05
+  steps_epsilon_decay: 54000
+
+paths:
+  model_dir: models/dqn
+  result_dir: results/dqn
+
+eval:
+  day0: 300          # held-out evaluation days [300, 364]
+  dayn: 365

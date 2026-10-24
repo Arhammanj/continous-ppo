@@ -1,0 +1,30 @@
+{
+  "parameters": {
+    "policy": "MlpPolicy",
+    "learning_rate": 0.0001,
+    "n_steps": 4096,
+    "batch_size": 128,
+    "n_epochs": 4,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "ent_coef": 0.0,
+    "log_std_init": 0.0,
+    "net_arch": [
+      128,
+      128
+    ],
+    "vf_coef": 0.5,
+    "clip_range": 0.3,
+    "max_grad_norm": 0.5,
+    "seed": 1,
+    "total_timesteps": 48000
+  },
+  "environment": {
+    "day0": 0,
+    "dayn": 300,
+    "reward_mode": "pure_profit"
+  },
+  "runtime_seconds": 160.11033725738525,
+  "actual_environment_steps": 49152,
+  "ppo_updates": 12
+}

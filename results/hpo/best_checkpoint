@@ -1,0 +1,3 @@
+Selected checkpoint directory:
+results/hpo/clip_03/seed_0/model/ppo_model.zip
+Per-seed checkpoints are under results/hpo/clip_03/seed_{0,1,2}/model/.

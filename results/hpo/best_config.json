@@ -1,0 +1,30 @@
+{
+  "configuration_id": "clip_03",
+  "policy": "MlpPolicy",
+  "learning_rate": 0.0001,
+  "n_steps": 4096,
+  "batch_size": 128,
+  "n_epochs": 4,
+  "gamma": 0.99,
+  "gae_lambda": 0.95,
+  "ent_coef": 0.0,
+  "clip_range": 0.3,
+  "max_grad_norm": 0.5,
+  "log_std_init": 0.0,
+  "net_arch": "[64,64]",
+  "vf_coef": 0.5,
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "training_timesteps_requested": 48000,
+  "validation_days": [
+    260,
+    299
+  ],
+  "test_days": [
+    300,
+    364
+  ]
+}
