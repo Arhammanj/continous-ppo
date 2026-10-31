@@ -163,6 +163,10 @@ evaluation, and confirmation that all supported entry points use `pure_profit`.
   5-tuple API and re-declares the spaces as `gymnasium.spaces` (the env's own
   `Box(0, 1)` is exceeded by the terminal time-step and the signed price
   window, so the adapter exposes bounds that actually contain the observations).
+* **Continuous daily battery state.** After a 24-hour episode completes, the
+  next consecutive day starts with the previous day's terminal SOC. The battery
+  is randomized only for the first day, a non-consecutive day, or an interrupted
+  episode.
 * **Preserved baseline.** `src/q_agent.py`, `src/loops.py` and
   `runner_train.py` are untouched in behaviour; `dqn/agent.py` is a thin
   re-export so the DQN code has a stable import surface.

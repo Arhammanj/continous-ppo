@@ -87,6 +87,20 @@ def test_battery_shield_and_action_mapping():
         assert env.battery.min_soc - 1e-9 <= soc <= env.battery.max_soc + 1e-9
 
 
+def test_next_day_starts_at_previous_day_terminal_soc():
+    env = make_env(day0=0, dayn=365, reward_mode="pure_profit")
+    env.reset(day=10)
+
+    done = False
+    while not done:
+        _, _, done, _ = env.step(ACTIONS.index(0))
+
+    terminal_soc = float(env.battery.SOC)
+    env.reset(day=11)
+
+    assert float(env.battery.SOC) == pytest.approx(terminal_soc)
+
+
 # --------------------------------------------------------------------------
 # 4. Gymnasium adapter compatibility
 # --------------------------------------------------------------------------

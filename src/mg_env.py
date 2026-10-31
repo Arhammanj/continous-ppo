@@ -221,8 +221,15 @@ class Battery():
     @property
     def SOC(self):
         return self.current_capacity
-    def reset(self):
-        self.current_capacity=np.random.uniform(self.safe_soc_low,self.safe_soc_high)
+    def reset(self, initial_soc=None):
+        if initial_soc is None:
+            self.current_capacity = np.random.uniform(
+                self.safe_soc_low, self.safe_soc_high
+            )
+        else:
+            self.current_capacity = float(
+                np.clip(initial_soc, self.safe_soc_low, self.safe_soc_high)
+            )
         # print(f'Battery initial soc: {self.current_capacity}')
         return self.current_capacity
 
@@ -348,6 +355,8 @@ class MicroGridEnv(gym.Env):
         self.time_step = 0
         self.prev_battery_action = 0.0
         self.prev_soc = DEFAULT_SOC_TARGET
+        self._last_completed_day = None
+        self._last_completed_soc = None
 
         # self.generation = Generation(kwargs.get("generation_data", DEFAULT_POWER_GENERATED))
         self.grid = Grid(tou_price=self.tou_price)
@@ -931,6 +940,9 @@ class MicroGridEnv(gym.Env):
 
 
         terminal = self.time_step == self.iterations
+        if terminal:
+            self._last_completed_day = self.day
+            self._last_completed_soc = float(self.battery.SOC)
         # if terminal:
 
         #     # # reward if battery is charged
@@ -953,8 +965,14 @@ class MicroGridEnv(gym.Env):
         self.unbalance = 0
         self.prev_battery_action = 0.0
 
-        # Reset the battery to a random state
-        self.in_SOC = self.battery.reset()
+        carry_soc = (
+            self._last_completed_day is not None
+            and self._last_completed_day + 1 == self.day
+        )
+        initial_soc = self._last_completed_soc if carry_soc else None
+        self.in_SOC = self.battery.reset(initial_soc=initial_soc)
+        self._last_completed_day = None
+        self._last_completed_soc = None
         self.prev_soc = float(self.in_SOC)
         
         # Reset DG to 0
@@ -975,7 +993,14 @@ class MicroGridEnv(gym.Env):
         # print("Day:", self.day)
         self.time_step = 0
         self.prev_battery_action = 0.0
-        in_SOC = self.battery.reset()
+        carry_soc = (
+            self._last_completed_day is not None
+            and self._last_completed_day + 1 == self.day
+        )
+        initial_soc = self._last_completed_soc if carry_soc else None
+        in_SOC = self.battery.reset(initial_soc=initial_soc)
+        self._last_completed_day = None
+        self._last_completed_soc = None
         self.prev_soc = float(in_SOC)
         self.high_price = 0
         self.loads.clear()
