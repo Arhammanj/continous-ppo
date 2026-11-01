@@ -56,15 +56,43 @@ def test_pure_profit_reward_formula():
 
 
 def test_pure_profit_step_invariants():
-    """reward == profit/scale, operation_cost == -profit, for every step."""
+    """Reward contains profit plus explicit opportunity and terminal terms."""
     env = make_env(day0=300, dayn=365, reward_mode="pure_profit")
     scale = env._get_profit_norm_scale()
     env.reset(day=301)
     done = False
     while not done:
         _, reward, done, _ = env.step(env.action_space.sample())
-        assert float(reward) == pytest.approx(float(env.last_profit) / scale)
+        expected = float(env.last_profit) / scale
+        expected += env.last_price_opportunity_adjustment
+        if done:
+            expected += env._terminal_market_value()
+        assert float(reward) == pytest.approx(expected)
         assert float(env.operation_cost) == pytest.approx(-float(env.last_profit))
+
+
+def test_terminal_market_value_rewards_soc_change_once():
+    env = make_env(day0=300, dayn=365, reward_mode="pure_profit")
+    env.reset(day=300)
+    start_soc = float(env.episode_start_soc)
+    env.battery.current_capacity = start_soc + 0.1
+    expected = (
+        0.1 * env.battery.capacity
+        * float(env.grid.buy_prices[(env.iterations - 1) % len(env.grid.buy_prices)])
+        / env._get_profit_norm_scale()
+    )
+    assert env._terminal_market_value() == pytest.approx(expected)
+
+
+def test_price_opportunity_rewards_high_value_discharge():
+    env = make_env(day0=300, dayn=365, reward_mode="pure_profit")
+    env.reset(day=300)
+    env.battery.energy_change = -80.0
+    env.grid.time = 10
+    high_price = env._price_opportunity_adjustment()
+    env.grid.time = 0
+    low_price = env._price_opportunity_adjustment()
+    assert high_price > low_price
 
 
 # --------------------------------------------------------------------------

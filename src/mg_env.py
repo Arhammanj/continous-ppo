@@ -99,8 +99,8 @@ DEFAULT_EFFICIENCY = 1       # charge/discharge efficiency = 1
 DEFAULT_DEGRADATION = 0.001      # battery degradation coefficent = 0
 DEFAULT_PEN_SOC = 500        # SOC penalty set to 50000
 DEFAULT_SOC_TARGET = 0.6
-DEFAULT_BOUNDARY_SOC_LOW = 0.3
-DEFAULT_BOUNDARY_SOC_HIGH = 0.7
+DEFAULT_BOUNDARY_SOC_LOW = 0.2
+DEFAULT_BOUNDARY_SOC_HIGH = 0.8
 DEFAULT_SOC_DEADBAND = 0.05
 DEFAULT_ALPHA_SOC_STABILITY = 2.5
 DEFAULT_BETA_BOUNDARY_SAFETY = 2.0
@@ -109,6 +109,7 @@ DEFAULT_DELTA_BATTERY_HEALTH = 0.1
 DEFAULT_ETA_ECONOMIC = 0.4
 DEFAULT_TERMINAL_SOC_WEIGHT = 3.0
 DEFAULT_ACTION_STEP_NORM = 80.0
+DEFAULT_PRICE_OPPORTUNITY_WEIGHT = 0.25
 # The project is standardized on the pure-profit objective. All supported
 # training entry points (dqn/train.py, ppo/train.py) also pass reward_mode
 # explicitly; the default is set here so any MicroGridEnv() construction is
@@ -327,6 +328,9 @@ class MicroGridEnv(gym.Env):
         self.delta_battery_health = kwargs.get("delta_battery_health", DEFAULT_DELTA_BATTERY_HEALTH)
         self.eta_economic = kwargs.get("eta_economic", DEFAULT_ETA_ECONOMIC)
         self.terminal_soc_weight = kwargs.get("terminal_soc_weight", DEFAULT_TERMINAL_SOC_WEIGHT)
+        self.price_opportunity_weight = kwargs.get(
+            "price_opportunity_weight", DEFAULT_PRICE_OPPORTUNITY_WEIGHT
+        )
         self.action_step_norm = kwargs.get("action_step_norm", DEFAULT_ACTION_STEP_NORM)
         self.reward_mode = kwargs.get("reward_mode", DEFAULT_REWARD_MODE)
         self.price_aware_weight = kwargs.get("price_aware_weight", DEFAULT_PRICE_AWARE_WEIGHT)
@@ -355,6 +359,7 @@ class MicroGridEnv(gym.Env):
         self.time_step = 0
         self.prev_battery_action = 0.0
         self.prev_soc = DEFAULT_SOC_TARGET
+        self.last_price_opportunity_adjustment = 0.0
         self._last_completed_day = None
         self._last_completed_soc = None
 
@@ -613,6 +618,35 @@ class MicroGridEnv(gym.Env):
 
         return float(profit_norm)
 
+    def _price_opportunity_adjustment(self):
+        """Shape the signal toward charging before, and discharging during, peaks."""
+        prices = self._price_window(
+            self.day * self.iterations + self.time_step,
+            horizon=self.iterations,
+        )
+        current_buy = float(self.grid.buy_prices[self.grid.time % len(self.grid.buy_prices)])
+        current_sell = float(self.grid.sell_prices[self.grid.time % len(self.grid.sell_prices)])
+        future_prices = np.asarray(prices[self.time_step + 1:], dtype=np.float32)
+        scale = self._get_profit_norm_scale()
+        energy = float(self.battery.energy_change)
+
+        if energy > 0.0 and future_prices.size:
+            opportunity = (float(np.max(future_prices)) - current_buy) * energy
+        elif energy < 0.0 and future_prices.size:
+            opportunity = (current_sell - float(np.max(future_prices))) * abs(energy)
+        else:
+            opportunity = 0.0
+        return float(self.price_opportunity_weight * opportunity / scale)
+
+    def _terminal_market_value(self):
+        """Value the net end-of-day SOC change at the final buy price."""
+        final_price = float(
+            self.grid.buy_prices[self.grid.time % len(self.grid.buy_prices)]
+        )
+        soc_change = float(self.battery.SOC) - float(self.episode_start_soc)
+        energy_change = soc_change * float(self.battery.capacity)
+        return energy_change * final_price / self._get_profit_norm_scale()
+
 
 
     def _build_state(self):
@@ -855,6 +889,9 @@ class MicroGridEnv(gym.Env):
         # reward =  -0.01*(battery_cost - sell_benefit + buy_cost) - (soc_penalty)
         # reward =  -0.01*(battery_cost - sell_benefit + buy_cost)
 
+        terminal = self.time_step + 1 == self.iterations
+        price_opportunity_adjustment = self._price_opportunity_adjustment()
+
         # Reward selection based on configured mode.
         if self.reward_mode == "similar_factors":
             reward, operation_cost = self._similar_factors_reward(
@@ -894,6 +931,9 @@ class MicroGridEnv(gym.Env):
                 sell_benefit=sell_benefit,
                 buy_cost=buy_cost,
             )
+            if terminal:
+                reward += self._terminal_market_value()
+            reward += price_opportunity_adjustment
             operation_cost = -self.last_profit   # keep operation_cost consistent with other modes
         else:
             reward = self._simple_reward(
@@ -920,6 +960,7 @@ class MicroGridEnv(gym.Env):
 
         self.operation_cost = operation_cost
         self.op_co_woDC = buy_cost-sell_benefit
+        self.last_price_opportunity_adjustment = price_opportunity_adjustment
 
         
         '''
@@ -939,7 +980,6 @@ class MicroGridEnv(gym.Env):
         state = self._build_state()
 
 
-        terminal = self.time_step == self.iterations
         if terminal:
             self._last_completed_day = self.day
             self._last_completed_soc = float(self.battery.SOC)
@@ -971,6 +1011,7 @@ class MicroGridEnv(gym.Env):
         )
         initial_soc = self._last_completed_soc if carry_soc else None
         self.in_SOC = self.battery.reset(initial_soc=initial_soc)
+        self.episode_start_soc = float(self.in_SOC)
         self._last_completed_day = None
         self._last_completed_soc = None
         self.prev_soc = float(self.in_SOC)
